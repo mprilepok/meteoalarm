@@ -1,4 +1,5 @@
-# Copyright (c) 2021 SQ9MDD Rysiek Labus
+# Copyright (c) 2024 OM1PU Michal Prilepok
+# Based on work SQ9MDD Rysiek Labu
 # 
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT

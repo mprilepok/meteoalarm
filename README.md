@@ -4,6 +4,22 @@ A project to make meteo alert (https://www.meteoalarm.eu/) weather warning data 
 - creates a status message to the existing WX Station (no beacon or weather data is sent)
 - creates bulletin message
  
+## Requires
+- [aprslib 0.7.2](https://pypi.org/project/aprslib/)
+
+## Install
+```
+pip install -r requirements.txt
+```
+## Run 
+### From shell
+```
+python meteoalarm.py
+```
+### Cron example
+```
+/usr/bin/python3 /home/aprs/meteoalarm.py
+```
 
 # Todo
 - [ ] Add APRS WX station beacon
@@ -11,4 +27,4 @@ A project to make meteo alert (https://www.meteoalarm.eu/) weather warning data 
 - [ ] Better warning processing
 
 # Credists and source
-Work s base on [SQ9MDD Rysiek Labus](https://github.com/SQ9MDD/meteoalarm)
+Based on work [SQ9MDD Rysiek Labus](https://github.com/SQ9MDD/meteoalarm)
