@@ -77,9 +77,9 @@ sk_awt = ['',
         'vystraha pred pobreznymi udalostami',
         'vystraha pred lesnym poziarom',
         'varovanie pred lavinami',
-        'varovanie pred silným dažďom',
+        'varovanie pred silnym dazdom',
         'varovanie pred povodnami',
-        'vystraha pred dazsom a povodnami']
+        'vystraha pred dazdom a povodnami']
 
 sk_lvl = ['ziadne upozornenia na pocasie',
         'ZLTA VYSTRAHA',
