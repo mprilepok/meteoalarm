@@ -95,7 +95,7 @@ def get_data_and_extract_alerts(rss_url, rss_county):
 
 def create_status_frame(awt, lvl, from_time, until_time):
     status_frame = (
-        f'{callsign}>APRS,TCPIP*:>'
+        f'{callsign}>APZ1PU,TCPIP*:>'
         + set_label_for_alert(lvl)
         + ' '
         + set_label_for_awerness(awt)
@@ -111,7 +111,7 @@ def create_status_frame(awt, lvl, from_time, until_time):
 
 def create_bulletin_frame(awt, lvl, from_time, until_time):
     status_frame = (
-        f'{callsign}>APRS,TCPIP*::{bulletin_name.ljust(5)}:Okres {rss_county}'
+        f'{callsign.ljust(9)}>APZ1PU,TCPIP*::{bulletin_name.ljust(9)}:Okres {rss_county} '
         + set_label_for_alert(lvl)
         + ' '
         + set_label_for_awerness(awt)
@@ -137,7 +137,7 @@ try:
         status_frame = create_status_frame(
             curr_alert_data[0], curr_alert_data[1], curr_alert_data[2], curr_alert_data[3])
     else:
-        status_frame = f'{callsign}>APRS,TCPIP*:' + \
+        status_frame = f'{callsign}>APZ1PU,TCPIP*:' + \
             '>' + set_label_for_alert(curr_alert_data[1])
 
     aprs_client .sendall(status_frame)
