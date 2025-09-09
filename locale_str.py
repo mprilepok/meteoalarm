@@ -69,19 +69,19 @@ pl_lvl = ['brak poprawnych danych ',
 # sk written by OM1PU Michal
 sk_awt = ['',
         'silny vietor',
-        'vystraha pred snezenim',
-        'varovanie pred burkou',
-        'varovanie pred hmlou',
-        'extremne vysoke teploty',
+        'snezenie',
+        'burka',
+        'hmla',
+        'extremne vysoka teplota',
         'extremne nizka teplota',
-        'vystraha pred pobreznymi udalostami',
-        'vystraha pred lesnym poziarom',
-        'varovanie pred lavinami',
-        'varovanie pred silnym dazdom',
-        'varovanie pred povodnami',
-        'vystraha pred dazdom a povodnami']
+        'pobrezne udalostami',
+        'lesny poziar',
+        'lavina',
+        'silny dazd',
+        'povodne',
+        'dazd a povoden']
 
-sk_lvl = ['ziadne upozornenia na pocasie',
+sk_lvl = ['ziadne upozornenie',
         'ZLTA VYSTRAHA',
-        'ORANZOVÁ VYSTRAHA',
-        'ČERVENÁ VYSTRAHA']
+        'ORANZOVA VYSTRAHA',
+        'CERVENA VYSTRAHA']

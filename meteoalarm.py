@@ -31,7 +31,8 @@
 
 # CHANGELOG
 # 20241202 - fork from SQ9MDD Rysiek Labus repo
-# 20241203 - Added aprs, extende configuraion, sk translation
+# 20241203 - Added aprs, extended configuraion, sk translation
+# 20250909 - Posibility to send multiple alerts in one status message, send messges to mutiple bulletins
 
 from locale_str import sk_lvl as def_lvl
 from locale_str import sk_awt as def_awt
@@ -39,23 +40,83 @@ from urllib.request import urlopen
 import aprslib
 import logging
 from datetime import datetime
+from bs4 import BeautifulSoup
+import requests
+import xml.etree.ElementTree as ET
+import pandas as pd
+import unicodedata
+
+class Region:
+    def __init__(self, country, bulletin, callsign=None):
+        self.country = country
+        self.bulletin = bulletin
+        self.callsign = callsign
+
 # ----------------------configuration----------------------------- #
 # put here valid RSS url for your country from meteoalarm.eu
 rss_url = 'https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-rss-slovakia'
-# region or country name exactly as it is in RSS
-rss_county = 'Senec'
+# regions
+regions = [
+    Region(country='Senec', bulletin='BLN1WXSC', callsign='OM1PU-6'), # send status message to object defined by callsign and bulletin message
+    Region(country='Bratislava', bulletin='BLN1WXBA'), # send only bulletin messages
+    Region(country='Dolný kubín', bulletin='BLN1WXDK'),
+    Region(country='Dunajská Streda', bulletin='BLN1WXDK')
+]
+
 # aprs
 callsign = 'NOCALL-6'
 passwd = '12345'
 host = 'euro.aprs2.net'
-bulletin_name = 'BLN1WXSC' # bulletin name for Senec
 port = 14580
+
+# genral settings
 timestamp_format = '%d.%m. %H:%M'
 
 debug_level = logging.ERROR
 # ----------------------configuration----------------------------- #
 
+def parse_meteoalarm_rss(url=rss_url):
+    resp = requests.get(url)
+    resp.raise_for_status()
+    xml_root = ET.fromstring(resp.content)
 
+    items = xml_root.findall(".//item")
+    records = []
+
+    for item in items:
+        region = item.findtext("title")
+        desc_cdata = item.findtext("description")
+        if not desc_cdata:
+            continue
+
+        # Parse the HTML from description
+        soup = BeautifulSoup(desc_cdata, "html.parser")
+
+        # Each warning row has awareness data and times
+        rows = soup.find_all("tr")
+        for row in rows:
+            td = row.find("td", attrs={"data-awareness-level": True, "data-awareness-type": True})
+            if td:
+                level = td["data-awareness-level"]
+                aet = td["data-awareness-type"]
+
+                # Find next <td> with From/Until
+                time_td = td.find_next_sibling("td")
+                if time_td:
+                    times = time_td.find_all("i")
+                    from_time = times[0].text if len(times) > 0 else None
+                    until_time = times[1].text if len(times) > 1 else None
+
+                    records.append({
+                        "region": region,
+                        "from": from_time,
+                        "until": until_time,
+                        "aet": aet,
+                        "level": level
+                    })
+
+    return pd.DataFrame(records)
+    
 def set_label_for_alert(alert=0):
     if alert < 0 and alert < 12:
         return ()
@@ -69,33 +130,28 @@ def set_label_for_awerness(awt=0):
     else:
         return def_awt[awt]
 
+def strip_accents(s):
+       return ''.join(c for c in unicodedata.normalize('NFD', s)
+                  if unicodedata.category(c) != 'Mn')
 
-def get_data_and_extract_alerts(rss_url, rss_county):
-    try:
-        response = urlopen(rss_url)
-        text = response.read().decode('utf-8')
-        county_code_pos = text.find(rss_county)
-        awt_pos = text.find('awt:', county_code_pos) + 4
-        lvl_pos = text.find('level:', county_code_pos) + 6
-        from_pos = text.find('From:', county_code_pos) + 13
-        until_pos = text.find('Until:', county_code_pos) + 14
-        awt = text[awt_pos: (awt_pos + 2)]  # AWT
-        lvl = text[lvl_pos: (lvl_pos + 1)]  # LVL
-        from_time = text[from_pos: (from_pos + 25)]  # from_time
-        until_time = text[until_pos: (until_pos + 25)]  # until_time
-
-        # awt,lvl,from_time,until_time
-        return_data = [int(awt), int(lvl), from_time, until_time]
-        return return_data
-    except:
-        # awt,lvl,from_time,until_time
-        return_data = [0, 0, '', '']
-        return return_data
-
-
-def create_status_frame(awt, lvl, from_time, until_time):
+def create_status_frame(callsign, awt, lvl, from_time, until_time):
     status_frame = (
-        f'{callsign}>APZ1PU,TCPIP*:>'
+        set_label_for_alert(lvl)
+        + ' - '
+        + set_label_for_awerness(awt)
+        + ' ('
+        + datetime.fromisoformat(from_time).strftime(timestamp_format)
+        + ' - '
+        + datetime.fromisoformat(until_time).strftime(timestamp_format)
+        + ' UTC)'
+    )
+
+    return status_frame
+
+
+def create_bulletin_frame(callsign, country, bulletin, awt, lvl, from_time, until_time):
+    status_frame = (
+        f'{callsign}>APZ1PU,TCPIP*::{bulletin}:Okres {country} '
         + set_label_for_alert(lvl)
         + ' '
         + set_label_for_awerness(awt)
@@ -109,45 +165,40 @@ def create_status_frame(awt, lvl, from_time, until_time):
     return status_frame
 
 
-def create_bulletin_frame(awt, lvl, from_time, until_time):
-    status_frame = (
-        f'{callsign.ljust(9)}>APZ1PU,TCPIP*::{bulletin_name.ljust(9)}:Okres {rss_county} '
-        + set_label_for_alert(lvl)
-        + ' '
-        + set_label_for_awerness(awt)
-        + ' ('
-        + datetime.fromisoformat(from_time).strftime(timestamp_format)
-        + ' - '
-        + datetime.fromisoformat(until_time, ).strftime(timestamp_format)
-        + ' UTC) (https://meteoalarm.org)'
-    )
-
-    return status_frame
-
-
 logging.basicConfig(level=debug_level)
 try:
     aprs_client = aprslib.IS(
         callsign=callsign, passwd=passwd, host=host, port=port)
     aprs_client .connect()
+    
+    df = parse_meteoalarm_rss()
+    
+    for region in regions:        
+        data = df[df['region'].str.contains(region.country, case=False, na=False)]
+        
+        status_frame = f'{callsign}>APZ1PU,TCPIP*:>'
+        
+        if region.callsign:
+            if data.empty:
+                status_frame = create_status_frame(region.callsign, 0, 0, datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+            else:
+                for row in data.iterrows():     
+                    status_frame = status_frame + create_status_frame(region.callsign, int(row[1]['aet']), int(row[1]['level']), row[1]['from'], row[1]['until']) + ' '
+            
+            status_frame = status_frame  + f'see BLN {region.bulletin}'
+            
+            aprs_client.sendall(status_frame)
 
-    curr_alert_data = get_data_and_extract_alerts(rss_url, rss_county)
-
-    if curr_alert_data[1] > 1:
-        status_frame = create_status_frame(
-            curr_alert_data[0], curr_alert_data[1], curr_alert_data[2], curr_alert_data[3])
-    else:
-        status_frame = f'{callsign}>APZ1PU,TCPIP*:' + \
-            '>' + set_label_for_alert(curr_alert_data[1])
-
-    aprs_client .sendall(status_frame)
-
-    if curr_alert_data[1] > 1:
-        status_frame = create_bulletin_frame(
-            curr_alert_data[0], curr_alert_data[1], curr_alert_data[2], curr_alert_data[3])
-
-        aprs_client .sendall(status_frame)
-
+        if not data.empty:
+            if not region.callsign:
+                bulletin_callsign = callsign
+            else:
+                bulletin_callsign = region.callsign
+                
+            for row in data.iterrows():     
+                bulletin_frame = create_bulletin_frame(bulletin_callsign, strip_accents(region.country), region.bulletin.ljust(9), int(row[1]['aet']), int(row[1]['level']), row[1]['from'], row[1]['until'])                
+                aprs_client.sendall(bulletin_frame)        
+            
     aprs_client .close()
 except Exception as e:
     logging.error(e)
