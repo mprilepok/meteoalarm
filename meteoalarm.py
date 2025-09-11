@@ -33,9 +33,10 @@
 # 20241202 - fork from SQ9MDD Rysiek Labus repo
 # 20241203 - Added aprs, extended configuraion, sk translation
 # 20250909 - Posibility to send multiple alerts in one status message, send messges to mutiple bulletins
+# 20250911 - Minor fixes
 
-from locale_str import sk_lvl as def_lvl
-from locale_str import sk_awt as def_awt
+from locale_str import sk_lvl as def_level
+from locale_str import sk_awt as def_awareness
 from urllib.request import urlopen
 import aprslib
 import logging
@@ -48,7 +49,7 @@ import unicodedata
 
 class Region:
     def __init__(self, country, bulletin, callsign=None):
-        self.country = country
+        self.name = country
         self.bulletin = bulletin
         self.callsign = callsign
 
@@ -57,12 +58,13 @@ class Region:
 rss_url = 'https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-rss-slovakia'
 # regions
 regions = [
-    Region(country='Senec', bulletin='BLN1WXSC', callsign='OM1PU-6'), # send status message to object defined by callsign and bulletin message
-    Region(country='Bratislava', bulletin='BLN1WXBA'), # send only bulletin messages
-    Region(country='Dolný kubín', bulletin='BLN1WXDK'),
-    Region(country='Dunajská Streda', bulletin='BLN1WXDK')
+    Region(country='Senec', bulletin='SC', callsign='NOCALL-6'), # send status message to object defined by callsign and bulletin message
+    Region(country='Bratislava', bulletin='BA'), # send only bulletin messages
+    Region(country='Dolný kubín', bulletin='DK'),
+    Region(country='Dunajská Streda', bulletin='DK')
 ]
 
+# aprs
 # aprs
 callsign = 'NOCALL-6'
 passwd = '12345'
@@ -111,50 +113,56 @@ def parse_meteoalarm_rss(url=rss_url):
                         "region": region,
                         "from": from_time,
                         "until": until_time,
-                        "aet": aet,
+                        "awareness": aet,
                         "level": level
                     })
 
     return pd.DataFrame(records)
     
-def set_label_for_alert(alert=0):
-    if alert < 0 and alert < 12:
+def label_for_level(level=0):
+    if level < 0 or level > 4:
         return ()
     else:
-        return def_lvl[alert]
+        return def_level[level]
 
 
-def set_label_for_awerness(awt=0):
-    if awt < 0 and awt > 4:
+def label_for_awerness(awareness=0):
+    if awareness < 0 or awareness > 12:
         return ()
     else:
-        return def_awt[awt]
+        return def_awareness[awareness]
 
-def strip_accents(s):
-       return ''.join(c for c in unicodedata.normalize('NFD', s)
+def strip_accents(text):
+       return ''.join(c for c in unicodedata.normalize('NFD', text)
                   if unicodedata.category(c) != 'Mn')
 
-def create_status_frame(callsign, awt, lvl, from_time, until_time):
+def safe_parse_datetime(dt_str):
+    try:
+        return datetime.fromisoformat(dt_str)
+    except Exception:
+        return datetime.now()
+
+def create_status_frame(awreness, level, from_time, until_time):
+    if level == 0:
+        return label_for_level(level)
+    else:
+        return (
+            f'{level}. stupen '
+            + label_for_awerness(awreness)
+            + ' ('
+            + safe_parse_datetime(from_time).strftime(timestamp_format)
+            + ' - '
+            + safe_parse_datetime(until_time).strftime(timestamp_format)
+            + ' UTC)'
+        )
+
+
+def create_bulletin_frame(callsign, region, bulletin, awareness, level, from_time, until_time):
     status_frame = (
-        set_label_for_alert(lvl)
-        + ' - '
-        + set_label_for_awerness(awt)
-        + ' ('
-        + datetime.fromisoformat(from_time).strftime(timestamp_format)
-        + ' - '
-        + datetime.fromisoformat(until_time).strftime(timestamp_format)
-        + ' UTC)'
-    )
-
-    return status_frame
-
-
-def create_bulletin_frame(callsign, country, bulletin, awt, lvl, from_time, until_time):
-    status_frame = (
-        f'{callsign}>APZ1PU,TCPIP*::{bulletin}:Okres {country} '
-        + set_label_for_alert(lvl)
-        + ' '
-        + set_label_for_awerness(awt)
+        f'{callsign}>APZ1PU,TCPIP*::{bulletin}:Okres {region} '
+        + f'{level}'
+        + '. stupen '
+        + label_for_awerness(awareness)
         + ' ('
         + datetime.fromisoformat(from_time).strftime(timestamp_format)
         + ' - '
@@ -172,32 +180,40 @@ try:
     aprs_client .connect()
     
     df = parse_meteoalarm_rss()
+    df = df.drop_duplicates()
     
     for region in regions:        
-        data = df[df['region'].str.contains(region.country, case=False, na=False)]
+        data = df[df['region'].str.contains(region.name, case=False, na=False)]
         
         status_frame = f'{callsign}>APZ1PU,TCPIP*:>'
+        has_first = False;
         
         if region.callsign:
             if data.empty:
-                status_frame = create_status_frame(region.callsign, 0, 0, datetime.utcnow().isoformat(), datetime.utcnow().isoformat())
+                status_frame = status_frame + create_status_frame(0, 0, datetime.now(), datetime.now())
             else:
-                for row in data.iterrows():     
-                    status_frame = status_frame + create_status_frame(region.callsign, int(row[1]['aet']), int(row[1]['level']), row[1]['from'], row[1]['until']) + ' '
+                for row in data.iterrows():
+                    if not has_first:     
+                        status_frame = status_frame + create_status_frame(int(row[1]['awareness']), int(row[1]['level']), row[1]['from'], row[1]['until'])
+                        has_first = True
+                    else:
+                        status_frame = status_frame  + ', ' + create_status_frame(int(row[1]['awareness']), int(row[1]['level']), row[1]['from'], row[1]['until'])
             
-            status_frame = status_frame  + f'see BLN {region.bulletin}'
+            status_frame = status_frame  + f' details in BLN WX{region.bulletin}'
             
             aprs_client.sendall(status_frame)
 
         if not data.empty:
+            i=1
             if not region.callsign:
                 bulletin_callsign = callsign
             else:
                 bulletin_callsign = region.callsign
                 
             for row in data.iterrows():     
-                bulletin_frame = create_bulletin_frame(bulletin_callsign, strip_accents(region.country), region.bulletin.ljust(9), int(row[1]['aet']), int(row[1]['level']), row[1]['from'], row[1]['until'])                
+                bulletin_frame = create_bulletin_frame(bulletin_callsign, strip_accents(region.name), f'BLN{i}WX{region.bulletin}'.ljust(9), int(row[1]['awareness']), int(row[1]['level']), row[1]['from'], row[1]['until'])                
                 aprs_client.sendall(bulletin_frame)        
+                i=i+1
             
     aprs_client .close()
 except Exception as e:
